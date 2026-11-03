@@ -1,0 +1,18 @@
+# Merge with docker-compose.yml; run only the backend service targets below.
+services:
+  api:
+    image: autometa-backend:local
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Backend.Dockerfile
+      target: app
+  worker:
+    image: autometa-backend:local
+  migrate:
+    image: autometa-backend:local
+  backups:
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Backend.Dockerfile
+      target: backups

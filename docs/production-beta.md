@@ -7,6 +7,23 @@ PostgreSQL/Redis remain private, and existing autometa data volumes are preserve
 
 ## Build and start
 
+For a VPS that contains only the backend folder (for example /var/www/autometa-backend),
+use the backend build override. It needs no sibling users/admin sources and preserves
+the same database volumes and service names:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.backend.yml build api backups
+docker compose -f docker-compose.yml -f docker-compose.backend.yml up -d --wait --no-build api worker backups monitoring
+docker compose -f docker-compose.yml -f docker-compose.backend.yml ps
+```
+
+Use both files for subsequent backend updates. The override changes the API/migration/worker
+image to autometa-backend:local and builds from the backend folder itself. It does not start
+the frontend services; specify the backend targets shown above. The existing frontend
+availability rules assume local web/admin containers; configure frontend monitoring for the
+separate hosting destination before relying on those two alerts. API, worker and backup
+monitoring work independently.
+
 From backend, with the existing private .env saved:
 
 ```sh
