@@ -1,0 +1,55 @@
+groups:
+  - name: autometa
+    rules:
+      - alert: AutometaApiUnavailable
+        expr: up{job="autometa"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          {
+            summary: 'Autometa API or authenticated metrics scrape is unavailable',
+          }
+      - alert: AutometaWorkerUnavailable
+        expr: autometa_worker_up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: 'Email worker heartbeat has expired' }
+      - alert: AutometaFrontendUnavailable
+        expr: autometa_frontend_up == 0
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          {
+            summary: 'A frontend is unavailable on the private service network',
+          }
+      - alert: AutometaOutboxStuck
+        expr: autometa_outbox_oldest_age_seconds > 120
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: 'Email outbox work is not being published' }
+      - alert: AutometaBackupStale
+        expr: time() - autometa_backup_last_success_timestamp_seconds > 93600
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          { summary: 'No successful database backup within 26 hours' }
+      - alert: AutometaBackupFailed
+        expr: autometa_backup_last_run_success == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          { summary: 'The latest backup attempt failed or has not completed' }
+      - alert: AutometaRestoreDrillStale
+        expr: time() - autometa_restore_last_success_timestamp_seconds > 691200
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          { summary: 'No successful isolated restore drill within eight days' }
+      - alert: AutometaUncertainEmail
+        expr: autometa_email_messages{status="UNKNOWN"} > 0
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          {
+            summary: 'Uncertain email outcomes require review; do not automatically resend',
+          }

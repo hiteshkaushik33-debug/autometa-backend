@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.next/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+.docker-local/
+
+**/.local/
+
+# Git metadata can live here while the work tree remains the parent folder.
+.git/

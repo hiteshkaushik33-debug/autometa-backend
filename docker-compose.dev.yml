@@ -1,0 +1,24 @@
+# Optional local development commands. Base Compose always uses production builds.
+services:
+  api:
+    command: [npm, run, dev:api]
+    environment:
+      NODE_ENV: development
+      EMAIL_TEST_MODE: 'true'
+  worker:
+    command: [npm, run, dev:worker]
+    environment:
+      NODE_ENV: development
+      EMAIL_TEST_MODE: 'true'
+  web:
+    command: [npm, run, dev]
+    environment:
+      NODE_ENV: development
+  admin:
+    command: [npm, run, dev]
+    environment:
+      NODE_ENV: development
+  backups:
+    profiles: [ops]
+  monitoring:
+    profiles: [ops]

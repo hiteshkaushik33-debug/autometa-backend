@@ -1,0 +1,317 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+model Tenant {
+  id String @id @default(uuid()) @db.Uuid
+  name String @db.VarChar(200)
+  status TenantStatus @default(TRIAL)
+  timezone String @default("UTC") @db.VarChar(80)
+  website String? @db.VarChar(500)
+  description String? @db.VarChar(2000)
+  trialEndsAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP + interval '14 days')")) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  users User[]
+  apiKeys ApiKey[]
+  audits AuditLog[]
+  emailAutomation EmailAutomation?
+  contacts Contact[]
+  events IntegrationEvent[]
+  outboundEmails OutboundEmail[]
+  suppressions EmailSuppression[]
+  creditAccount CreditAccount?
+  creditLedger CreditLedger[]
+  creditTopUps CreditTopUp[]
+  @@index([status, createdAt])
+}
+enum TenantStatus { 
+  TRIAL
+  ACTIVE
+  SUSPENDED
+}
+enum Role {
+  SUPER_ADMIN
+  TENANT_ADMIN
+}
+enum TokenPurpose {
+  VERIFY
+  RESET
+}
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  email String @unique @db.VarChar(254)
+  passwordHash String
+  role Role @default(TENANT_ADMIN)
+  tenantId String? @db.Uuid
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  verifiedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  sessions Session[]
+  tokens AccountToken[]
+  mockEmails MockEmail[]
+  outboundEmails OutboundEmail[]
+  @@index([tenantId])
+}
+model Session {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  credentials RefreshCredential[]
+  @@index([userId, revokedAt])
+}
+model RefreshCredential {
+  id String @id @default(uuid()) @db.Uuid
+  tokenHash String @unique @db.Char(64)
+  sessionId String @db.Uuid
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  usedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([sessionId])
+}
+model AccountToken {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String @unique @db.Char(64)
+  purpose TokenPurpose
+  expiresAt DateTime @db.Timestamptz(3)
+  usedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([userId, purpose])
+}
+model MockEmail {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject String @db.VarChar(200)
+  encryptedBody String
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([userId, createdAt])
+}
+model ApiKey {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name String @db.VarChar(100)
+  environment String @db.VarChar(12)
+  prefix String @db.VarChar(30)
+  keyHash String @unique @db.Char(64)
+  lastUsedAt DateTime? @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([tenantId, revokedAt])
+}
+model AuditLog {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  actorId String @db.VarChar(100)
+  action String @db.VarChar(100)
+  resourceId String @db.VarChar(100)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([tenantId, createdAt])
+  @@index([createdAt])
+}
+
+
+model EmailAutomation {
+  tenantId String @id @db.Uuid
+  tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+  enabled Boolean @default(false)
+  followUpEnabled Boolean @default(false)
+  enabledEvents String[] @default(["lead.created","contact.created","inquiry.received","feedback.submitted"])
+  subject String @default("We received your message at {{businessName}}") @db.VarChar(200)
+  body String @default("Hi {{contactName}},\n\n{{businessName}} has received your message. We will get back to you soon.\n\nReference: {{reference}}")
+  dailyLimit Int @default(20)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}
+model Contact {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+  email String @db.VarChar(254)
+  name String @db.VarChar(160)
+  phone String? @db.VarChar(40)
+  transactionalAllowed Boolean @default(false)
+  permissionEvidence Json?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  events IntegrationEvent[]
+  @@unique([tenantId,email])
+  @@unique([id,tenantId])
+}
+model IntegrationEvent {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+  environment String @db.VarChar(12)
+  externalEventId String @db.VarChar(128)
+  idempotencyKey String @db.VarChar(128)
+  payloadHash String @db.Char(64)
+  eventType String @db.VarChar(80)
+  encryptedPayload String
+  contactId String @db.Uuid
+  contact Contact @relation(fields:[contactId,tenantId],references:[id,tenantId],onDelete:Cascade)
+  emailDecision String @db.VarChar(80)
+  email OutboundEmail?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([tenantId,environment,externalEventId])
+  @@unique([tenantId,environment,idempotencyKey])
+  @@unique([id,tenantId])
+  @@index([tenantId,createdAt])
+}
+enum EmailStatus {
+  QUEUED
+  SENDING
+  RETRY
+  MOCK_ACCEPTED
+  SMTP_ACCEPTED
+  SUPPRESSED
+  FAILED
+  UNKNOWN
+  WAITING_CREDITS
+}
+model OutboundEmail {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant Tenant? @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+  userId String? @db.Uuid
+  user User? @relation(fields:[userId],references:[id],onDelete:Cascade)
+  integrationEventId String? @unique @db.Uuid
+  integrationEvent IntegrationEvent? @relation(fields:[integrationEventId,tenantId],references:[id,tenantId],onDelete:Cascade)
+  parentEmailId String? @unique @db.Uuid
+  parentEmail OutboundEmail? @relation("EmailFollowUp",fields:[parentEmailId],references:[id],onDelete:Cascade)
+  followUp OutboundEmail? @relation("EmailFollowUp")
+  scheduledAt DateTime? @db.Timestamptz(3)
+  purpose String @db.VarChar(24)
+  billingCostPaise Int? 
+  creditHold EmailCreditHold?
+  provider String @db.VarChar(12)
+  sender String @db.VarChar(254)
+  recipient String @db.VarChar(254)
+  subject String @db.VarChar(200)
+  encryptedBody String
+  status EmailStatus @default(QUEUED)
+  errorCode String? @db.VarChar(80)
+  providerMessageId String?
+  attemptCount Int @default(0)
+  quotaDay String? @db.VarChar(10)
+  leaseUntil DateTime? @db.Timestamptz(3)
+  dispatchToken String? @db.Uuid
+  expiresAt DateTime? @db.Timestamptz(3)
+  acceptedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  attempts EmailAttempt[]
+  outbox EmailOutbox?
+  @@unique([id,tenantId])
+  @@unique([integrationEventId,tenantId])
+  @@index([tenantId,createdAt])
+  @@index([status,leaseUntil])
+}
+model EmailOutbox {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  emailId String @unique @db.Uuid
+  email OutboundEmail @relation(fields:[emailId],references:[id],onDelete:Cascade)
+  claimToken String? @db.Uuid
+  leaseUntil DateTime? @db.Timestamptz(3)
+  attempts Int @default(0)
+  publishedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([publishedAt,leaseUntil])
+}
+model EmailAttempt {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  emailId String @db.Uuid
+  email OutboundEmail @relation(fields:[emailId],references:[id],onDelete:Cascade)
+  number Int
+  outcome String @db.VarChar(40)
+  safeCode String? @db.VarChar(80)
+  startedAt DateTime @default(now()) @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
+  @@unique([emailId,number])
+  @@index([tenantId,startedAt])
+}
+model UsageCounter {
+  key String @id @db.VarChar(200)
+  quantity Int @default(0)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}
+model EmailSuppression {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+  emailHash String @db.Char(64)
+  encryptedAddress String
+  reason String @db.VarChar(40)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([tenantId,emailHash])
+}
+
+model CreditAccount {
+  tenantId String @id @db.Uuid
+  tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+  availablePaise Int @default(0)
+  reservedPaise Int @default(0)
+  blocked Boolean @default(false)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}
+model CreditLedger {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+  kind String @db.VarChar(24)
+  amountPaise Int
+  reservedDeltaPaise Int @default(0)
+  reference String @db.VarChar(200)
+  description String @db.VarChar(200)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([tenantId,reference])
+  @@index([tenantId,createdAt])
+}
+model EmailCreditHold {
+  emailId String @id @db.Uuid
+  email OutboundEmail @relation(fields:[emailId],references:[id],onDelete:Cascade)
+  tenantId String @db.Uuid
+  amountPaise Int
+  state String @default("HELD") @db.VarChar(16)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  @@index([tenantId,state])
+}
+model CreditTopUp {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+  idempotencyKey String @db.VarChar(128)
+  packId String @db.VarChar(20)
+  amountPaise Int
+  currency String @default("INR") @db.VarChar(3)
+  status String @default("CREATING") @db.VarChar(32)
+  providerOrderId String? @unique @db.VarChar(100)
+  providerPaymentId String? @unique @db.VarChar(100)
+  refundedPaise Int @default(0)
+  disputed Boolean @default(false)
+  errorCode String? @db.VarChar(80)
+  paidAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  @@unique([tenantId,idempotencyKey])
+  @@index([tenantId,createdAt])
+}
+model PaymentWebhook {
+  eventId String @id @db.VarChar(160)
+  payloadHash String @db.Char(64)
+  eventType String @db.VarChar(100)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}

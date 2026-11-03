@@ -1,0 +1,44 @@
+# Reference template: GitHub only discovers workflows at a repository root.
+name: Foundation checks
+on: [push, pull_request]
+defaults:
+  run:
+    working-directory: backend
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            users/package-lock.json
+            admin/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: users
+      - run: npm ci
+        working-directory: admin
+      - run: npm run db:generate
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run format:check
+      - run: npm run build
+      - run: npm run lint && npm run typecheck && npm run format:check && npm run build
+        working-directory: users
+      - run: npm run lint && npm run typecheck && npm run format:check && npm run build
+        working-directory: admin
+      - run: cp .env.example .env
+      - run: npm run dev:configure
+      - run: docker compose build api
+      - run: docker compose up -d --wait --no-build
+      - run: docker compose exec -T -e API_BASE_URL=http://api:4000/api/v1 -e WEB_ORIGIN=http://web:3000 api npm run test:integration
+      - run: docker compose exec -T -e API_BASE_URL=http://api:4000/api/v1 -e TEST_USERS_URL=http://web:3000 -e TEST_ADMIN_URL=http://admin:3000 api npm run test:accounts
+      - if: always()
+        run: docker compose logs --no-color --tail 50
+      - if: always()
+        run: docker compose down
